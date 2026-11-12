@@ -1,0 +1,45 @@
+# This repository publishes only analysis code and packaging metadata.
+# No data, no outputs, no credentials are ever committed.
+
+# Project data and generated outputs
+outputs/
+datafiles/
+
+# Data file formats (raw/processed data, tables, geospatial)
+*.parquet
+*.xlsx
+*.xls
+*.csv
+*.pkl
+*.geojson
+*.tif
+*.tiff
+
+# Generated reports, figures, and rendered artifacts
+*.html
+*.png
+*.pdf
+*.svg
+*.eps
+
+# Python caches and virtual environments
+__pycache__/
+.ipynb_checkpoints/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# Secrets and environment configuration
+.env
+
+# OS and editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log

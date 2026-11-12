@@ -1,0 +1,43 @@
+# Python 3.13
+# Exact pins from the environment used to produce the published results.
+# Do not widen or "update" these versions without re-validating the pipeline.
+
+# --- Data handling ---
+pandas==2.3.0
+numpy==2.4.6
+pyarrow==21.0.0
+
+# --- Geospatial ---
+geopandas==1.1.1
+shapely==2.1.1
+geopy==2.4.1
+contextily==1.7.0
+
+# --- Routing / geocoding APIs ---
+openrouteservice==2.3.3
+requests==2.32.3
+
+# --- Statistics ---
+scipy==1.15.2
+statsmodels==0.14.4
+
+# --- Plotting ---
+matplotlib==3.10.3
+seaborn==0.13.2
+plotly==6.3.0
+pillow==11.1.0
+
+# --- Interactive validation tool ---
+folium==0.20.0
+ipywidgets==8.1.5
+ipyleaflet==0.20.0
+tqdm==4.67.1
+
+# --- File formats ---
+openpyxl==3.1.5
+tifffile==2025.10.16
+
+# --- OPTIONAL ---
+# Needed only to open s02b_validate_locations.py as a notebook (via jupytext
+# paired-notebook format); not required to run the pipeline itself.
+jupytext==1.17.3
