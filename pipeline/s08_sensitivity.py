@@ -29,21 +29,35 @@ that purpose"?
     trips, which is not the relevant choice set for a referral trip of this
     length.
 
+(C) Exclusions (Exclusion_Sensitivity sheet)
+    The analysis dataset drops two groups of records (Fig 1): round trips of
+    config.MIN_ROUNDTRIP_KM or less, and age groups above
+    config.MAX_AGE_GROUP. This section rebuilds the routed dataset with
+    s06's own emission and region code and recomputes the headline totals,
+    the per-interconsultation distance, and the Capital vs Non-capital
+    comparison (Mann-Whitney U and Cliff's delta, point estimates) four
+    times: with both exclusions (the main analysis, which is checked against
+    analysis_dataset.parquet), keeping the short trips, keeping the age
+    outliers, and keeping both.
+
 Input:
     utils.resolve_input("analysis_dataset.parquet"), s06's output, already
-    carrying the renamed columns (config.COLUMN_RENAMES).
+    carrying the renamed columns (config.COLUMN_RENAMES), and, for (C),
+    utils.resolve_input("routed_ors.parquet"), s04's output.
 
 Output:
     OUTPUT_DIR/sensitivity_analysis.xlsx, with sheets Substitution_Rate,
-    Transport_Mode, Assumptions_and_Sources.
+    Transport_Mode, Exclusion_Sensitivity, Assumptions_and_Sources.
 """
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
+from scipy import stats
 
 import config
-from pipeline import utils
+from pipeline import s06_emissions, utils
 
 OUTPUT_FILE = "sensitivity_analysis.xlsx"
 
@@ -319,6 +333,118 @@ def _assumptions_sheet() -> pd.DataFrame:
 
 
 # -----------------------------------------------------------------------------
+# (C) Exclusions: with and without the short-trip and age-outlier records
+# -----------------------------------------------------------------------------
+
+# (key, label, keep short trips, keep age outliers)
+_EXCLUSION_SCENARIOS = [
+    ("main", "Main analysis (both exclusions applied)", False, False),
+    ("with_short", f"Including round trips <= {config.MIN_ROUNDTRIP_KM * 1000:.0f} m", True, False),
+    ("with_age", "Including records aged 110 years or older", False, True),
+    ("with_both", "Including both (no exclusions)", True, True),
+]
+
+
+def _expand(values: pd.Series, weights: pd.Series) -> np.ndarray:
+    """One observation per interconsultation (each row repeated N times)."""
+    return np.repeat(values.to_numpy(dtype=float), weights.to_numpy(dtype=int))
+
+
+def _exclusion_metrics(df: pd.DataFrame) -> dict:
+    """Headline totals, per-interconsultation distance and the Capital vs
+    Non-capital comparison for one version of the dataset (s06 column
+    names, before COLUMN_RENAMES)."""
+    km = _expand(df["km_per_person"], df["N"])
+    region_type = df["origin_abs_region_name"].apply(utils.classify_region_type)
+    cap = df[region_type == "Capital"]
+    non = df[region_type == "Non-capital"]
+    km_cap = _expand(cap["km_per_person"], cap["N"])
+    km_non = _expand(non["km_per_person"], non["N"])
+    u_stat, u_p = stats.mannwhitneyu(km_cap, km_non, alternative="two-sided")
+    n_total = int(df["N"].sum())
+    return {
+        "records": len(df),
+        "interconsultations": n_total,
+        "total_km": float(df["total_km"].sum()),
+        "total_co2_kg": float(df["emissio_co2_kg"].sum()),
+        "total_n2o_kg": float(df["emissio_n2o_kg"].sum()),
+        "mean_km": float(km.mean()),
+        "median_km": float(np.median(km)),
+        "sd_km": float(km.std(ddof=1)),
+        "mean_co2_kg": float(df["emissio_co2_kg"].sum() / n_total),
+        "capital_share_pct": 100.0 * len(km_cap) / n_total,
+        "mean_km_capital": float(km_cap.mean()),
+        "mean_km_noncapital": float(km_non.mean()),
+        "median_km_capital": float(np.median(km_cap)),
+        "median_km_noncapital": float(np.median(km_non)),
+        "mannwhitney_u": float(u_stat),
+        "mannwhitney_p": float(u_p),
+        "cliffs_delta": float(utils.cliffs_delta(km_cap, km_non, u_stat=u_stat)),
+    }
+
+
+_EXCLUSION_LABELS = {
+    "records": ("Records", "records"),
+    "interconsultations": ("Interconsultations", "interconsultations"),
+    "total_km": ("Total round-trip distance", "km"),
+    "total_co2_kg": ("Total avoided CO2", "kg"),
+    "total_n2o_kg": ("Total avoided N2O", "kg"),
+    "mean_km": ("Mean round-trip distance per interconsultation", "km"),
+    "median_km": ("Median round-trip distance per interconsultation", "km"),
+    "sd_km": ("SD of round-trip distance per interconsultation", "km"),
+    "mean_co2_kg": ("Mean avoided CO2 per interconsultation", "kg"),
+    "capital_share_pct": ("Share of interconsultations in capital regions", "%"),
+    "mean_km_capital": ("Mean distance, capital regions", "km"),
+    "mean_km_noncapital": ("Mean distance, non-capital regions", "km"),
+    "median_km_capital": ("Median distance, capital regions", "km"),
+    "median_km_noncapital": ("Median distance, non-capital regions", "km"),
+    "mannwhitney_u": ("Mann-Whitney U (distance, capital vs non-capital)", "U statistic"),
+    "mannwhitney_p": ("Mann-Whitney p (distance)", "p-value"),
+    "cliffs_delta": ("Cliff's delta (distance, capital vs non-capital)", "delta"),
+}
+
+
+def _exclusion_sensitivity(analysis_df: pd.DataFrame) -> pd.DataFrame:
+    """Recompute the headline results with and without the Fig 1
+    exclusions (round trips <= MIN_ROUNDTRIP_KM, age groups above
+    MAX_AGE_GROUP), using s06's own row computation and region assignment
+    so the main scenario reproduces analysis_dataset.parquet exactly.
+    """
+    routed = utils.read_table(utils.resolve_input("routed_ors.parquet"))
+    rows = s06_emissions._compute_rows(routed)
+    rows = rows[rows["km_roundtrip"].notna()]
+    rows = s06_emissions._assign_regions(rows)
+    short = rows["km_roundtrip"] <= config.MIN_ROUNDTRIP_KM
+    old = rows["GRUP_EDAT"] > config.MAX_AGE_GROUP
+
+    results = {}
+    for key, label, keep_short, keep_old in _EXCLUSION_SCENARIOS:
+        mask = (keep_short | ~short) & (keep_old | ~old)
+        results[key] = _exclusion_metrics(rows[mask])
+        utils.log(f"  {label}: {results[key]['interconsultations']:,} interconsultations")
+
+    main = results["main"]
+    if main["interconsultations"] != int(analysis_df["N"].sum()) or main["records"] != len(analysis_df):
+        raise AssertionError("Exclusion sensitivity: the main scenario does not reproduce analysis_dataset.parquet")
+    if not np.isclose(main["total_co2_kg"], float(analysis_df["emissio_co2_kg"].sum()), rtol=1e-9):
+        raise AssertionError("Exclusion sensitivity: main-scenario CO2 total differs from analysis_dataset.parquet")
+
+    table = []
+    for metric, (label, unit) in _EXCLUSION_LABELS.items():
+        row = {"Metric": label, "Unit": unit}
+        for key, scen_label, _s, _o in _EXCLUSION_SCENARIOS:
+            value = results[key][metric]
+            row[scen_label] = value
+            utils.record_number(f"exclusion_sensitivity_{key}_{metric}", value, unit, "s08_sensitivity")
+            if key != "main" and metric not in ("mannwhitney_p",) and main[metric]:
+                pct = 100.0 * (value - main[metric]) / main[metric]
+                row[f"{scen_label} vs main (%)"] = pct
+                utils.record_number(f"exclusion_sensitivity_{key}_{metric}_pct_change", pct, "%", "s08_sensitivity")
+        table.append(row)
+    return pd.DataFrame(table)
+
+
+# -----------------------------------------------------------------------------
 # Main
 # -----------------------------------------------------------------------------
 
@@ -340,12 +466,17 @@ def main() -> None:
     transport_sheet, baseline = _transport_mode_scenarios(df)
     utils.log(transport_sheet.to_string(index=False))
 
+    utils.log("Computing exclusion sensitivity (with/without short trips and age outliers)...")
+    exclusion_sheet = _exclusion_sensitivity(df)
+    utils.log(exclusion_sheet.to_string(index=False))
+
     assumptions_sheet = _assumptions_sheet()
 
     out_path = config.output_path(OUTPUT_FILE)
     with pd.ExcelWriter(out_path) as writer:
         substitution_sheet.to_excel(writer, sheet_name="Substitution_Rate", index=False)
         transport_sheet.to_excel(writer, sheet_name="Transport_Mode", index=False)
+        exclusion_sheet.to_excel(writer, sheet_name="Exclusion_Sensitivity", index=False)
         assumptions_sheet.to_excel(writer, sheet_name="Assumptions_and_Sources", index=False)
     utils.log(f"Saved: {out_path}")
 

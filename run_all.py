@@ -108,9 +108,9 @@ STEPS = [
     dict(
         name="s08_sensitivity",
         module="pipeline.s08_sensitivity",
-        inputs="analysis_dataset.parquet",
+        inputs="analysis_dataset.parquet, routed_ors.parquet",
         outputs="sensitivity_analysis.xlsx",
-        note="Substitution-rate and transport-mode sensitivity analysis.",
+        note="Substitution-rate, transport-mode and exclusion (with/without short trips and age outliers) sensitivity analyses.",
     ),
     dict(
         name="s09_figures",

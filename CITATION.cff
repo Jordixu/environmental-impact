@@ -1,0 +1,73 @@
+cff-version: 1.2.0
+message: >-
+  If you use this software, please cite both the software itself and the
+  accompanying journal article listed under "preferred-citation".
+type: software
+title: >-
+  Environmental Impact of Medical Record-based Provider-to-provider
+  Telemedicine in the Catalan Health System
+abstract: >-
+  Analysis pipeline estimating travel-related greenhouse gas emissions
+  potentially avoided by asynchronous provider-to-provider interconsultations
+  (e-consults) in the Catalan public health system.
+authors:
+  - given-names: Francesc
+    family-names: López Seguí
+  - given-names: Arnau
+    family-names: Pons Calsapeu
+  - given-names: Laura
+    family-names: Ricou Ríos
+  - given-names: Maria
+    family-names: Reverte Palahi
+  - given-names: Jordi
+    family-names: Xu Wang
+  - given-names: Arlet
+    family-names: Puigferrat Campderrós
+  - given-names: Ermengol
+    family-names: Coma Redon
+  - given-names: Marc
+    family-names: de San Pedro
+  - given-names: Joan
+    family-names: Guanyabens Calvet
+  - given-names: Josep
+    family-names: Vidal-Alaball
+license: MIT
+doi: ""
+version: 1.0.0
+date-released: 2026-10-31
+keywords:
+  - telemedicine
+  - e-consult
+  - greenhouse gas emissions
+  - health care sustainability
+  - Catalonia
+  - travel avoidance
+preferred-citation:
+  type: article
+  title: >-
+    Environmental Impact of Medical Record-based Provider-to-provider
+    Telemedicine in the Catalan Health System
+  journal: PLOS ONE
+  year: 2026
+  doi: ""
+  authors:
+    - given-names: Francesc
+      family-names: López Seguí
+    - given-names: Arnau
+      family-names: Pons Calsapeu
+    - given-names: Laura
+      family-names: Ricou Ríos
+    - given-names: Maria
+      family-names: Reverte Palahi
+    - given-names: Jordi
+      family-names: Xu Wang
+    - given-names: Arlet
+      family-names: Puigferrat Campderrós
+    - given-names: Ermengol
+      family-names: Coma Redon
+    - given-names: Marc
+      family-names: de San Pedro
+    - given-names: Joan
+      family-names: Guanyabens Calvet
+    - given-names: Josep
+      family-names: Vidal-Alaball
