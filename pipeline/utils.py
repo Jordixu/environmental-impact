@@ -461,6 +461,24 @@ def is_nonphysical(series: pd.Series, case_sensitive: bool) -> pd.Series:
     return series.astype(str).str.contains(pattern, case=case_sensitive, na=False)
 
 
+def keep_study_years(df: pd.DataFrame, source_step: str) -> pd.DataFrame:
+    """Keep only rows whose year is in config.YEARS (2019 and 2023-2025),
+    i.e. drop the pandemic years 2020-2022 and anything else outside the
+    study period. Records how many records and interconsultations were
+    dropped, so the exclusion is visible in the number inventory even when
+    the extract contains no such rows and nothing is dropped.
+    """
+    year_col = year_column(df)
+    keep = df[year_col].isin(config.YEARS)
+    dropped = df.loc[~keep]
+    n_records = int(len(dropped))
+    n_ic = int(pd.to_numeric(dropped[config.WEIGHT_COL], errors="coerce").fillna(0).sum())
+    log(f"Dropped {n_records:,} records ({n_ic:,} interconsultations) outside the study years {config.YEARS}.")
+    record_number(f"{source_step}_dropped_nonstudy_year_records", n_records, "records", source_step)
+    record_number(f"{source_step}_dropped_nonstudy_year_interconsultations", n_ic, "interconsultations", source_step)
+    return df.loc[keep].copy()
+
+
 # =============================================================================
 # Generic table I/O
 # =============================================================================

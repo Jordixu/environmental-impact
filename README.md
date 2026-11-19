@@ -52,8 +52,7 @@ The pipeline looks in both places.
 | `INTERCONSULT_OUTPUT_DIR` | `../outputs` (relative to `publish/`) | Every generated artifact: intermediates, route caches, figures, tables. |
 | `ORS_API_KEY` | none | OpenRouteService key, only needed with `--no-use-cache`/`--refresh` on `s04_route_ors`. |
 | `INTERCONSULT_ORS_BASE_URL` | `https://api.heigit.org/openrouteservice` | OpenRouteService host. The default is HeiGIT's current one; the older `api.openrouteservice.org` still answers but throttles the same key to 200 requests per 24h instead of 2,000. |
-| `GOOGLE_MAPS_API_KEY` | none | Google Geocoding API key, only needed for the historical, opt-in `s02_geocode --geocode` path. |
-| `INTERCONSULT_NOMINATIM_UA` | `interconsultations-emissions-study/1.0 (research; contact via repository)` | HTTP user agent sent to Nominatim, per its usage policy. |
+| `INTERCONSULT_NOMINATIM_UA` | `interconsultations-emissions-study/1.0 (research; contact via repository)` | HTTP user agent sent to Nominatim (forward geocoding in `s02_geocode --geocode`, reverse geocoding in `s02b_validate_locations`), per its usage policy. |
 
 PowerShell:
 
@@ -129,15 +128,15 @@ comment at the step list explaining why.
 | # | Step | Inputs | Outputs | What it does |
 |---|---|---|---|---|
 | 1 | `s01_preprocess` | `raw_export_historical.xlsx`, `UP_codis.xlsx` | `cleaned_locations_for_geocoding.parquet`, `processed_export.parquet` | Cleans/standardizes origin and destination facility names, drops interconsultations not tied to a physical service, splits co-managed sites, joins the provider-unit catalogue. |
-| 2 | `s02_geocode` | `cleaned_locations_for_geocoding.parquet`, or the frozen `cleaned_locations_geocoded.parquet` | `cleaned_locations_geocoded.parquet`, `geocoded_interconsultations.parquet` | Default: merges the frozen, hand-validated coordinates onto the derivations dataset, no network access. `--geocode` (opt-in, historical): re-derives raw coordinates from the Google Geocoding API; needs `GOOGLE_MAPS_API_KEY` and is not needed to reproduce published results. |
+| 2 | `s02_geocode` | `cleaned_locations_for_geocoding.parquet`, or the frozen `cleaned_locations_geocoded.parquet` | `cleaned_locations_geocoded.parquet`, `geocoded_interconsultations.parquet` | Default: merges the frozen, hand-validated coordinates onto the derivations dataset, no network access. `--geocode` (opt-in): geocodes every location from scratch with Nominatim (OpenStreetMap), bounded to Catalonia, and discards any result outside the health-region polygons; no API key. Its output still has to be validated with `s02b_validate_locations` before the merge uses it. |
 | 2b | `s02b_validate_locations` | geocoded locations, health-region GeoJSON | `validated_*` coordinate/flag columns | **Interactive only, never run by `run_all.py`.** A jupytext percent-format tool (ipywidgets + ipyleaflet + Nominatim reverse geocoding) for manually checking/correcting each location's coordinate. See "Interactive validation tool" below. |
 | 3 | `s03_integrate_2025` | `geocoded_interconsultations.parquet`, `raw_export_2025.txt` | `geocoded_interconsultations.parquet` (updated), `unroutable_2025.csv` | Replaces the partial 2025 slice in the historical export with the complete 2025 export, per `config.YEAR_2025_MODE` (default `refresh_replaces_partial`). |
 | 4 | `s04_route_ors` | `geocoded_interconsultations.parquet`, `route_cache_ors.pkl` | `routed_ors.parquet`, `route_table_ors.parquet`, `cache/route_cache_ors.pkl` | Routes every unique origin-destination coordinate pair with OpenRouteService (outbound and return legs routed and summed separately); `--use-cache` (default) never calls the API, `--refresh` permits live calls for pairs missing from or previously failed in the cache. |
 | 5 | `s06_emissions` | `routed_ors.parquet` | `analysis_dataset.parquet`, `emissions_summary.xlsx` | Computes CO2/CH4/N2O/CO2-equivalent emissions per interconsultation from year-specific MITECO factors weighted by the DGT national fleet's diesel/gasoline split; writes the final, renamed analysis dataset the rest of the pipeline builds on. |
-| 6 | `s05_route_osrm` | `geocoded_interconsultations.parquet`, `analysis_dataset.parquet`, `route_cache_osrm.pkl` | `routed_osrm.parquet`, `route_table_osrm.parquet`, `cache/route_cache_osrm.pkl`, `ors_osrm_agreement.xlsx` | Re-routes the same pairs with OSRM and quantifies how much the choice of routing engine matters for the study's population-weighted results, both as a weighted total and as a deduplicated route-level comparison. |
-| 7 | `s07_statistics` | `analysis_dataset.parquet` | `statistics_capital_vs_noncapital.xlsx` | Capital vs Non-Capital comparison for six outcomes (Shapiro-Wilk, Levene, Mann-Whitney U, Cliff's delta with route-clustered bootstrap CIs, Cohen's d as reference only), plus a route-level deduplicated comparison and a sex split. |
-| 8 | `s08_sensitivity` | `analysis_dataset.parquet` | `sensitivity_analysis.xlsx` | Two sensitivity analyses: rescaling the headline totals at lower substitution rates, and re-computing avoided CO2 under mixed-transport-mode assumptions (car/public-transport shares by region, MITECO public-transport factors). |
-| 9 | `s09_figures` | `analysis_dataset.parquet`, regions GeoJSON, raw/intermediate funnel files | `figures/Fig1.tif`, `Fig2.tif`, `Fig3.tif` (+ `.pdf` of each) | Renders the three manuscript figures (inclusion/exclusion flow chart, per-interconsultation box plots, spatial maps) as PLOS ONE-compliant 300 dpi RGB TIFFs. |
+| 6 | `s05_route_osrm` | `geocoded_interconsultations.parquet`, `analysis_dataset.parquet`, `route_cache_osrm.pkl` | `routed_osrm.parquet`, `route_table_osrm.parquet`, `cache/route_cache_osrm.pkl`, `ors_osrm_agreement.xlsx` | Re-routes the same pairs with OSRM and quantifies how much the choice of routing engine matters for the study's population-weighted results, both as a weighted total and as a deduplicated route-level comparison (including how often ORS is shorter or longer than OSRM). |
+| 7 | `s07_statistics` | `analysis_dataset.parquet` | `statistics_capital_vs_noncapital.xlsx` | Capital vs Non-Capital comparison for six outcomes (Shapiro-Wilk, Levene, Mann-Whitney U, Cliff's delta with route-clustered bootstrap CIs, Cohen's d as reference only), plus a route-level deduplicated comparison and aggregate sex and age splits (age groups under 10 interconsultations suppressed). |
+| 8 | `s08_sensitivity` | `analysis_dataset.parquet` | `sensitivity_analysis.xlsx` | Two sensitivity analyses: rescaling the headline totals at lower substitution rates, and re-computing avoided CO2 under mixed-transport-mode assumptions (car/public-transport shares by region, MITECO public-transport factors), with a robustness re-run using the capital car share from the EMEF 2018 and 2023 editions. |
+| 9 | `s09_figures` | `analysis_dataset.parquet`, regions GeoJSON, raw/intermediate funnel files | `figures/Fig1.tif`, `Fig2.tif`, `Fig3.tif` (+ `.pdf` of each) | Renders the three manuscript figures (inclusion/exclusion flow chart, per-interconsultation box plots, spatial maps) as PLOS ONE-compliant 300 dpi RGB TIFFs, and records the activity figures the Results cite with them: centres by role, unique geographic routes, and the busiest centres and routes. |
 | 10 | `s10_tables` | `analysis_dataset.parquet`, `routed_osrm.parquet`, `statistics_capital_vs_noncapital.xlsx`, `sensitivity_analysis.xlsx` | `tables/Table1..5.xlsx`, `tables/S1..S4_Table.xlsx`, `tables/S1_Data.xlsx`, `manuscript_numbers.csv` | Builds every manuscript table, the published route-year data extract (S1 Data), and the machine-readable inventory of every number the manuscript cites. The final step. |
 
 ### Interactive validation tool
@@ -191,12 +190,15 @@ stray "person" or "people" wording outside a legacy-column comment or a rename-m
 
 ## Reproducibility notes
 
-- The geocoding step (`s02_geocode --geocode`) is historical and opt-in. The published
-  results use the frozen, hand-validated coordinate set
-  (`cleaned_locations_geocoded.parquet`), which is what the default, no-flag path reuses.
+- Facility coordinates come from Nominatim (OpenStreetMap data, © OpenStreetMap
+  contributors, ODbL): `s02_geocode --geocode` geocodes each location, and
+  `s02b_validate_locations` has a reviewer check and correct each one on an OpenStreetMap
+  basemap. The result is frozen as `cleaned_locations_geocoded.parquet`, and the default,
+  no-flag path of `s02_geocode` reuses it, so reproducing the published results needs no
+  geocoding at all.
 - The frozen route caches (`route_cache_ors.pkl`, `route_cache_osrm.pkl`) are what make a full
   rerun possible with no API keys at all. `--use-cache`, the default, never calls ORS,
-  OSRM or Google.
+  OSRM or Nominatim.
 - The complete 2025 export supersedes a partial 2025 slice that is already present in the
   historical export (`config.YEAR_2025_MODE = "refresh_replaces_partial"`, the default).
   Concatenating the two instead (`"concatenate"`) double counts roughly 361,873

@@ -3,10 +3,10 @@
 This step reproduces the published comparison between interconsultations
 originating in the Capital health regions (the three Barcelona sub-regions)
 and those originating everywhere else (Non-capital), plus two analyses with
-no legacy counterpart: a route-level comparison for S4 Table and a sex
-split of the analysis population.
+no legacy counterpart: a route-level comparison for S4 Table, and the sex
+and age splits of the analysis population.
 
-Three analyses, each written to its own sheet(s) of
+Four analyses, each written to its own sheet(s) of
 OUTPUT_DIR/statistics_capital_vs_noncapital.xlsx:
 
 1. Six-variable comparison (round-trip distance, CO2, CH4, N2O, CO2eq, travel
@@ -32,6 +32,11 @@ OUTPUT_DIR/statistics_capital_vs_noncapital.xlsx:
 
 3. Sex split of the analysis population: aggregate numerator, denominator
    and share for each sex. No further breakdown is produced.
+
+4. Age split of the analysis population: interconsultations per five-year
+   age group, with groups under config.SUPPRESSION_THRESHOLD suppressed,
+   plus a few broad age-band shares. No breakdown by sex, region, year or
+   facility is produced.
 """
 
 from __future__ import annotations
@@ -452,6 +457,59 @@ def sex_split(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["Sex", "Code", "Numerator", "Denominator", "Percent"])
 
 
+def _age_label(code) -> str:
+    """Five-year band for a GRUP_EDAT code: code k covers ages 5k to 5k+4.
+    Negative codes are not valid ages in the export and are labelled as such.
+    """
+    k = int(code)
+    return f"{5 * k}-{5 * k + 4}" if k >= 0 else "invalid code"
+
+
+def age_split(df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate age distribution of the analysis population, by five-year
+    age group only (no breakdown by sex, region, year or facility).
+
+    Disclosure control: any age group with fewer than
+    config.SUPPRESSION_THRESHOLD interconsultations is shown as
+    config.SUPPRESSION_LABEL in the workbook and left out of the number
+    inventory, the same rule S1 Data applies. The summary shares recorded
+    below are computed on the full counts, which only ever aggregate many
+    groups together.
+    """
+    utils.log("Age split")
+
+    totals = df.groupby("GRUP_EDAT")["N"].sum().sort_index()
+    denominator = int(totals.sum())
+    valid = totals[totals.index >= 0]
+
+    rows = []
+    for code, n in totals.items():
+        n = int(n)
+        suppressed = n < config.SUPPRESSION_THRESHOLD
+        rows.append({
+            "Age group": _age_label(code),
+            "Code": int(code),
+            "Interconsultations": config.SUPPRESSION_LABEL if suppressed else n,
+            "Percent": None if suppressed else 100.0 * n / denominator,
+        })
+        if not suppressed and code >= 0:
+            utils.record_number(f"age_group_{_age_label(code)}_percent", 100.0 * n / denominator, "%", SOURCE_STEP)
+
+    modal = int(valid.idxmax())
+    utils.record_number("age_group_modal", _age_label(modal), "age group", SOURCE_STEP)
+
+    def share(lo_age: int, hi_age: int) -> float:
+        codes = [c for c in valid.index if 5 * c >= lo_age and 5 * c + 4 <= hi_age]
+        return 100.0 * float(valid.loc[codes].sum()) / denominator
+
+    for lo, hi in ((0, 39), (40, 74), (40, 79), (75, 109), (80, 109)):
+        utils.record_number(f"age_share_{lo}_{hi}_percent", share(lo, hi), "%", SOURCE_STEP)
+    utils.record_number("age_split_denominator", denominator, "interconsultations", SOURCE_STEP)
+    utils.log(f"  Modal age group: {_age_label(modal)}; 40-74 share {share(40, 74):.1f}%")
+
+    return pd.DataFrame(rows, columns=["Age group", "Code", "Interconsultations", "Percent"])
+
+
 # =============================================================================
 # Orchestration
 # =============================================================================
@@ -498,6 +556,9 @@ def main() -> None:
     # --- 3. Sex split --------------------------------------------------------
     sex_df = sex_split(df)
 
+    # --- 4. Age split --------------------------------------------------------
+    age_df = age_split(df)
+
     # --- Write workbook -------------------------------------------------------
     out_path = config.output_path("statistics_capital_vs_noncapital.xlsx")
     utils.log(f"Writing: {out_path.name}")
@@ -508,6 +569,7 @@ def main() -> None:
             build_detail_sheet(result).to_excel(writer, sheet_name=sheet_name, index=False)
         route_df.to_excel(writer, sheet_name="Route_level", index=False)
         sex_df.to_excel(writer, sheet_name="Sex_split", index=False)
+        age_df.to_excel(writer, sheet_name="Age_split", index=False)
 
     elapsed = time.time() - start
     utils.log(f"Done in {elapsed:.1f}s")

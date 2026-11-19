@@ -83,24 +83,6 @@ def ors_api_key() -> str:
     return key
 
 
-def google_api_key() -> str:
-    """Return the Google Maps API key from GOOGLE_MAPS_API_KEY.
-
-    Raises RuntimeError with setup instructions if the variable is missing.
-    The key is only needed for the historical, opt-in geocoding path.
-    """
-    key = os.environ.get("GOOGLE_MAPS_API_KEY")
-    if not key:
-        raise RuntimeError(
-            "GOOGLE_MAPS_API_KEY is not set. This key is only required for "
-            "the historical, opt-in Google geocoding path (--geocode); the "
-            "default pipeline re-uses the frozen geocoded file and does not "
-            "need it. Set the environment variable if you intend to "
-            "re-geocode from scratch."
-        )
-    return key
-
-
 def nominatim_user_agent() -> str:
     """Return the HTTP user agent string to use for Nominatim requests.
 
@@ -267,6 +249,11 @@ PT_FACTORS = {"urban_bus": 0.103, "interurban_bus": 0.028, "regional_train": 0.0
 SHORT_RT_KM = 10.0
 CAR_SHARE_SOURCE_CAPITAL = "EMEF 2024, Barcelona metropolitan area; car share of motorized trips"
 CAR_SHARE_SOURCE_NONCAPITAL = "Departament de Territori / Mobilicat rural mobility data"
+# Robustness check on the capital car share: the same car / (car + public
+# transport) ratio from earlier EMEF editions (Barcelona metropolitan area),
+# as published in those editions' executive summaries. The 2024 value is
+# CAR_SHARE_CAPITAL above; s08 re-runs scenarios 2a/2b with each of these.
+CAR_SHARE_CAPITAL_EARLIER_EMEF = {2018: 0.680, 2023: 0.665}
 
 # -----------------------------------------------------------------------------
 # Disclosure control
@@ -292,9 +279,12 @@ ORS_BASE_URL = os.environ.get(
 )
 OSRM_BASE_URL = "https://router.project-osrm.org"
 OSRM_SLEEP_S = 1.0
-NOMINATIM_SLEEP_S = 1.1
-NOMINATIM_AUTO_ACCEPT_M = 100.0  # Phase 3 auto-accept radius
-COORD_IDENTICAL_M = 1.0  # Phase 3 "unchanged coordinate" radius
+NOMINATIM_SLEEP_S = 1.1  # Nominatim usage policy: at most one request per second
+NOMINATIM_COUNTRY_CODE = "es"
+# Bounding box around Catalonia (lat_min, lat_max, lon_min, lon_max). Nominatim
+# queries are bounded to it; the authoritative inside-Catalonia check is the
+# point-in-polygon join against REGIONS_GEOJSON that s02 runs afterwards.
+CATALONIA_BBOX = (40.5, 42.9, 0.15, 3.4)
 
 # -----------------------------------------------------------------------------
 # Column renames

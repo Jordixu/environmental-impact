@@ -387,6 +387,9 @@ def _population_weighted_totals(merged: pd.DataFrame) -> dict:
         "total_km_ors": total_km_ors,
         "total_km_osrm": total_km_osrm,
         "pct_diff_km": (total_km_ors - total_km_osrm) / total_km_ors * 100,
+        # The same difference expressed against the OSRM total, which the
+        # manuscript reports alongside the percent-of-ORS figure.
+        "pct_diff_km_of_osrm": (total_km_ors - total_km_osrm) / total_km_osrm * 100,
         "total_min_ors": total_min_ors,
         "total_min_osrm": total_min_osrm,
         "pct_diff_min": (total_min_ors - total_min_osrm) / total_min_ors * 100,
@@ -482,6 +485,11 @@ def _route_level_comparison(df_routes: pd.DataFrame, col_a: str, col_b: str, lab
     spearman_r, spearman_p = stats.spearmanr(a, b)
     weighted_r = _weighted_pearson(a, b, paired["N"].to_numpy(dtype=float))
 
+    # Direction of the difference (ORS - OSRM), counted per route.
+    n_ors_lower = int((diff < 0).sum())
+    n_ors_higher = int((diff > 0).sum())
+    n_tied = int((diff == 0).sum())
+
     bias = mean_diff
     sd_diff = float(np.std(diff, ddof=1))
     loa_param = (bias - 1.96 * sd_diff, bias + 1.96 * sd_diff)
@@ -495,6 +503,8 @@ def _route_level_comparison(df_routes: pd.DataFrame, col_a: str, col_b: str, lab
         "rank_biserial_r": r_rb, "rank_biserial_ci_low": rb_ci[0], "rank_biserial_ci_high": rb_ci[1],
         "median_diff": median_diff, "median_diff_ci_low": median_ci[0], "median_diff_ci_high": median_ci[1],
         "mean_diff": mean_diff,
+        "n_ors_lower": n_ors_lower, "n_ors_higher": n_ors_higher, "n_tied": n_tied,
+        "pct_ors_lower": n_ors_lower / n * 100, "pct_ors_higher": n_ors_higher / n * 100,
         "pearson_r": float(pearson_r), "pearson_p": float(pearson_p),
         "spearman_r": float(spearman_r), "spearman_p": float(spearman_p),
         "weighted_pearson_r": weighted_r,
@@ -548,6 +558,11 @@ def _metric_rows(result: dict) -> pd.DataFrame:
         ("Median difference 95% CI low", result["median_diff_ci_low"], unit),
         ("Median difference 95% CI high", result["median_diff_ci_high"], unit),
         ("Mean difference (reference only, assumes normality)", result["mean_diff"], unit),
+        ("Routes where ORS is lower than OSRM (n)", result["n_ors_lower"], None),
+        ("Routes where ORS is lower than OSRM", result["pct_ors_lower"], "%"),
+        ("Routes where ORS is higher than OSRM (n)", result["n_ors_higher"], None),
+        ("Routes where ORS is higher than OSRM", result["pct_ors_higher"], "%"),
+        ("Routes where ORS equals OSRM (n)", result["n_tied"], None),
         ("Pearson r", result["pearson_r"], None),
         ("Pearson p-value", result["pearson_p"], None),
         ("Spearman rho", result["spearman_r"], None),
@@ -584,6 +599,7 @@ def _write_agreement_workbook(path, pop_weighted: dict, dist_result: dict, time_
         ("Population-weighted total distance, ORS", pop_weighted["total_km_ors"], "km"),
         ("Population-weighted total distance, OSRM", pop_weighted["total_km_osrm"], "km"),
         ("Distance difference (ORS - OSRM), percent of ORS", pop_weighted["pct_diff_km"], "%"),
+        ("Distance difference (ORS - OSRM), percent of OSRM", pop_weighted["pct_diff_km_of_osrm"], "%"),
         ("Population-weighted total time, ORS", pop_weighted["total_min_ors"], "min"),
         ("Population-weighted total time, OSRM", pop_weighted["total_min_osrm"], "min"),
         ("Time difference (ORS - OSRM), percent of ORS", pop_weighted["pct_diff_min"], "%"),
@@ -704,6 +720,29 @@ def main() -> None:
         "ors_osrm_distance_rank_biserial", dist_result["rank_biserial_r"], "unitless", "s05_route_osrm"
     )
     utils.record_number("ors_osrm_distance_ba_bias_km", dist_result["ba_bias"], "km", "s05_route_osrm")
+
+    # Every other figure in the manuscript's routing-validation paragraph, so
+    # the whole paragraph can be checked against this inventory rather than
+    # against the workbook alone.
+    utils.record_number("ors_osrm_pct_diff_km_of_osrm", pop_weighted["pct_diff_km_of_osrm"], "%", "s05_route_osrm")
+    utils.record_number("ors_weighted_total_km", pop_weighted["total_km_ors"], "km", "s05_route_osrm")
+    for prefix, res, unit in (("distance", dist_result, "km"), ("time", time_result, "min")):
+        for key, name, u in (
+            ("spearman_r", "spearman_rho", "unitless"),
+            ("median_diff", "median_diff", unit),
+            ("median_diff_ci_low", "median_diff_ci_low", unit),
+            ("median_diff_ci_high", "median_diff_ci_high", unit),
+            ("wilcoxon_statistic", "wilcoxon_w", "statistic"),
+            ("wilcoxon_p", "wilcoxon_p", "p-value"),
+            ("ba_loa_parametric_low", "ba_loa_low", unit),
+            ("ba_loa_parametric_high", "ba_loa_high", unit),
+            ("n_ors_lower", "n_routes_ors_lower", "routes"),
+            ("n_ors_higher", "n_routes_ors_higher", "routes"),
+            ("pct_ors_lower", "pct_routes_ors_lower", "%"),
+            ("pct_ors_higher", "pct_routes_ors_higher", "%"),
+        ):
+            utils.record_number(f"ors_osrm_{prefix}_{name}", res[key], u, "s05_route_osrm")
+    utils.record_number("ors_osrm_time_pearson_r", time_result["pearson_r"], "unitless", "s05_route_osrm")
 
     utils.log("Done.")
     utils.flush_numbers("s05_route_osrm")

@@ -636,6 +636,55 @@ def _build_routes(df: pd.DataFrame) -> pd.DataFrame:
     return routes.sort_values("N", ascending=False).reset_index(drop=True)
 
 
+_N_RANKED = 5  # how many top centres/routes the inventory names
+
+
+def _record_activity_numbers(df: pd.DataFrame, active: pd.DataFrame, routes: pd.DataFrame) -> None:
+    """Record the activity figures the Results text cites alongside Fig 3.
+
+    - Centre roles: how many of the active centres appear as an origin, as
+      a destination, and in both roles.
+    - Unique geographic routes: distinct origin/destination coordinate
+      pairs among the config.ROUTE_KEY routes. Some facility pairs share a
+      physical location, so this is lower than the route count.
+    - The busiest origin centres, destination centres and routes by
+      interconsultation volume, named by facility. These are facility-level
+      aggregates only: no patient attribute enters them.
+    """
+    n_origin = int((active["N_ori"] > 0).sum())
+    n_destination = int((active["N_des"] > 0).sum())
+    n_both = int(((active["N_ori"] > 0) & (active["N_des"] > 0)).sum())
+    utils.record_number("centres_active_as_origin", n_origin, "centres", "s09_figures")
+    utils.record_number("centres_active_as_destination", n_destination, "centres", "s09_figures")
+    utils.record_number("centres_active_in_both_roles", n_both, "centres", "s09_figures")
+
+    n_geo = int(routes[["olat", "olon", "dlat", "dlon"]].round(6).drop_duplicates().shape[0])
+    utils.record_number("unique_geographic_routes", n_geo, "routes", "s09_figures")
+    utils.log(
+        f"  Centres: {n_origin:,} as origin, {n_destination:,} as destination, {n_both:,} both; "
+        f"{n_geo:,} unique geographic routes among {len(routes):,} routes"
+    )
+
+    for role, col in (("origin", "N_ori"), ("destination", "N_des")):
+        top = active.sort_values(col, ascending=False).head(_N_RANKED)
+        for rank, row in enumerate(top.itertuples(), start=1):
+            utils.record_number(f"top_{role}_centre_{rank}_name", row.centre, "facility", "s09_figures")
+            utils.record_number(
+                f"top_{role}_centre_{rank}_interconsultations", int(getattr(row, col)),
+                "interconsultations", "s09_figures",
+            )
+
+    names = df.groupby(config.ROUTE_KEY).agg(
+        origin=("origin_location_name", "first"), destination=("destination_location_name", "first")
+    )
+    top_routes = routes.head(_N_RANKED).join(names, on=config.ROUTE_KEY)
+    for rank, row in enumerate(top_routes.itertuples(), start=1):
+        utils.record_number(
+            f"top_route_{rank}_name", f"{row.origin} -> {row.destination}", "route", "s09_figures"
+        )
+        utils.record_number(f"top_route_{rank}_interconsultations", int(row.N), "interconsultations", "s09_figures")
+
+
 def _dist_bin_index(km: float) -> int:
     for i, (lo, hi, _label) in enumerate(_DIST_BINS):
         if lo <= km < hi:
@@ -704,6 +753,7 @@ def make_fig3(df: pd.DataFrame | None = None) -> None:
     utils.record_number("fig3_total_interconsultations", total_ic, "interconsultations", "s09_figures")
     utils.record_number("fig3_routes_shown", f"{len(top):,} of {n_routes_total:,}", "routes", "s09_figures")
     utils.record_number("fig3_max_route_volume", max_vol, "interconsultations", "s09_figures")
+    _record_activity_numbers(df, active, routes)
 
     fig, axs = plt.subplots(2, 2, figsize=(7.3, 8.4))
     plt.subplots_adjust(hspace=0.1, wspace=0.06)

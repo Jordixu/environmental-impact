@@ -151,6 +151,7 @@ def _load_and_clean_2025(raw_path) -> tuple[pd.DataFrame, int, int]:
     df["GRUP_EDAT"] = pd.to_numeric(df["GRUP_EDAT"], errors="coerce").astype("Int64")
     df["N"] = pd.to_numeric(df["N"], errors="coerce").astype("Int64")
     df[config.YEAR_COL] = df[config.YEAR_COL].astype(int)
+    df = utils.keep_study_years(df, "s03")  # the 2025 export holds only 2025; drops nothing
 
     before_records = len(df)
     before_n = int(df["N"].sum())

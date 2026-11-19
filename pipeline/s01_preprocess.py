@@ -215,6 +215,11 @@ def main() -> None:
         "s01_raw_interconsultations", raw_interconsultations, "interconsultations", "s01_preprocess"
     )
 
+    # Study period: 2019 and 2023-2025 only. The extract as delivered holds no
+    # other years, so this drops nothing and leaves the Figure 1 counts as
+    # they are; it makes the exclusion explicit instead of implied.
+    df = utils.keep_study_years(df, "s01")
+
     # Figure 1 funnel, step 1: drop rows with no usable origin or destination name.
     df, dropped_missing_records, dropped_missing_n = _drop_missing_origin_or_destination(df)
     utils.log(

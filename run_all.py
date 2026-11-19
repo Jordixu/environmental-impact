@@ -223,7 +223,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="use_cache",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Never call ORS/OSRM/Google; reuse the frozen route caches (default: True). "
+        help="Never call ORS/OSRM/Nominatim; reuse the frozen coordinates and route caches (default: True). "
         "This is the documented way to reproduce the published results with no API keys.",
     )
     parser.add_argument(

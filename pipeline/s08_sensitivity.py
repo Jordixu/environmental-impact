@@ -249,6 +249,28 @@ def _transport_mode_scenarios(df: pd.DataFrame) -> tuple[pd.DataFrame, float]:
             f"sensitivity_scenario_{slug}_pct_of_baseline", value / baseline * 100, "%", "s08_sensitivity"
         )
 
+    utils.record_number("sensitivity_car_share_capital_pct", car_capital * 100, "%", "s08_sensitivity")
+    utils.record_number("sensitivity_car_share_noncapital_pct", car_noncapital * 100, "%", "s08_sensitivity")
+
+    # Robustness: the capital car share from earlier EMEF editions, with
+    # scenarios 2a and 2b re-run under each. Non-capital assumptions unchanged.
+    for edition, share in sorted(config.CAR_SHARE_CAPITAL_EARLIER_EMEF.items()):
+        alt_2a = _region_co2(df, capital_mask, share, 0.0) + _region_co2(df, noncapital_mask, car_noncapital, 0.0)
+        alt_2b = _region_co2(df, capital_mask, share, pt_urban_bus) + _region_co2(
+            df, noncapital_mask, car_noncapital, pt_interurban_bus
+        )
+        utils.record_number(f"sensitivity_emef{edition}_car_share_capital_pct", share * 100, "%", "s08_sensitivity")
+        utils.record_number(
+            f"sensitivity_emef{edition}_scenario_2a_pct_of_baseline", alt_2a / baseline * 100, "%", "s08_sensitivity"
+        )
+        utils.record_number(
+            f"sensitivity_emef{edition}_scenario_2b_pct_of_baseline", alt_2b / baseline * 100, "%", "s08_sensitivity"
+        )
+        utils.log(
+            f"EMEF {edition} capital car share {share:.1%}: scenario 2a {alt_2a / baseline:.1%}, "
+            f"2b {alt_2b / baseline:.1%} of baseline"
+        )
+
     return sheet, baseline
 
 
@@ -269,6 +291,14 @@ def _assumptions_sheet() -> pd.DataFrame:
                 "Value": config.CAR_SHARE_NONCAPITAL,
                 "Source": _CAR_SHARE_SOURCE_NONCAPITAL,
             },
+            *[
+                {
+                    "Parameter": f"Capital car share, EMEF {edition} (robustness check)",
+                    "Value": share,
+                    "Source": f"EMEF {edition}, Barcelona Metropolitan Area (Institut Metropoli / ATM)",
+                }
+                for edition, share in sorted(config.CAR_SHARE_CAPITAL_EARLIER_EMEF.items())
+            ],
             {
                 "Parameter": "PT factor - urban bus (kg CO2e/pkm)",
                 "Value": config.PT_FACTORS["urban_bus"],
